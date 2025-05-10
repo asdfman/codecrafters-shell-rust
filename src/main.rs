@@ -15,17 +15,47 @@ fn main() -> ExitCode {
         let Some(command) = input_parts.next() else {
             continue;
         };
-        match command.to_ascii_lowercase().as_str() {
-            "exit" => {
-                if let Some(val) = input_parts.next() {
-                    let num = val.parse::<u8>().unwrap_or(0);
-                    return ExitCode::from(num);
-                }
+        let command = Command::from(command);
+        let args = input_parts.collect::<Vec<_>>();
+        match command {
+            Command::Exit => {
+                let val = args.first().unwrap_or(&"0").parse::<u8>().unwrap_or(0);
+                return ExitCode::from(val);
             }
-            "echo" => {
-                println!("{}", input_parts.collect::<Vec<_>>().join(" "))
+            Command::Echo => {
+                println!("{}", args.join(" "))
             }
-            _ => println!("{}: command not found", input.trim()),
+            Command::Type => type_command(args),
+            Command::Invalid => println!("{}: command not found", input.trim()),
         }
+    }
+}
+
+enum Command {
+    Exit,
+    Echo,
+    Type,
+    Invalid,
+}
+
+impl From<&str> for Command {
+    fn from(command: &str) -> Self {
+        match command.to_ascii_lowercase().as_str() {
+            "exit" => Command::Exit,
+            "echo" => Command::Echo,
+            "type" => Command::Type,
+            _ => Command::Invalid,
+        }
+    }
+}
+
+fn type_command(args: Vec<&str>) {
+    let Some(command_text) = args.first() else {
+        return;
+    };
+    let command = Command::from(*command_text);
+    match command {
+        Command::Invalid => println!("{}: not found", command_text),
+        _ => println!("{} is a shell builtin", command_text),
     }
 }
