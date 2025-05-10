@@ -28,6 +28,7 @@ fn main() -> ExitCode {
                 println!("{}", args.join(" "))
             }
             Command::Type => type_command(args),
+            Command::Pwd => println!("{}", env::current_dir().unwrap().display()),
             Command::Executable { file, path: _ } => run_executable(file, args),
             Command::Invalid => println!("{}: command not found", input.trim()),
         }
@@ -39,6 +40,7 @@ enum Command {
     Echo,
     Type,
     Executable { file: String, path: String },
+    Pwd,
     Invalid,
 }
 
@@ -48,6 +50,7 @@ impl From<&str> for Command {
             "exit" => Command::Exit,
             "echo" => Command::Echo,
             "type" => Command::Type,
+            "pwd" => Command::Pwd,
             _ => {
                 if let Some(path) = try_get_executable_path(command) {
                     Command::Executable {
