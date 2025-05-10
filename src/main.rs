@@ -29,6 +29,7 @@ fn main() -> ExitCode {
             }
             Command::Type => type_command(args),
             Command::Pwd => println!("{}", env::current_dir().unwrap().display()),
+            Command::Cd => change_directory(args),
             Command::Executable { file, path: _ } => run_executable(file, args),
             Command::Invalid => println!("{}: command not found", input.trim()),
         }
@@ -41,6 +42,7 @@ enum Command {
     Type,
     Executable { file: String, path: String },
     Pwd,
+    Cd,
     Invalid,
 }
 
@@ -51,6 +53,7 @@ impl From<&str> for Command {
             "echo" => Command::Echo,
             "type" => Command::Type,
             "pwd" => Command::Pwd,
+            "cd" => Command::Cd,
             _ => {
                 if let Some(path) = try_get_executable_path(command) {
                     Command::Executable {
@@ -62,6 +65,13 @@ impl From<&str> for Command {
                 }
             }
         }
+    }
+}
+
+fn change_directory(args: Vec<&str>) {
+    let path = args.first().unwrap();
+    if env::set_current_dir(path).is_err() {
+        println!("cd: {}: No such file or directory", path);
     }
 }
 
