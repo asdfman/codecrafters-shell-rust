@@ -24,7 +24,7 @@ fn main() -> ExitCode {
 fn process_input() -> Result<Option<ExitCode>> {
     print!("$ ");
     let input = take_input()?;
-    let (command, args) = parse_input(&input)?;
+    let (command, args) = parse_input(&input);
     handle_command(command, args)
 }
 
@@ -35,12 +35,9 @@ fn take_input() -> Result<String> {
     Ok(input)
 }
 
-fn parse_input(input: &str) -> Result<(String, Vec<String>)> {
-    let (command, remainder) = match input.find(char::is_whitespace) {
-        Some(idx) => input.split_at(idx),
-        None => ("", ""),
-    };
-    Ok((command.to_string(), parse_args(remainder)))
+fn parse_input(input: &str) -> (String, Vec<String>) {
+    let mut args = parse_args(input);
+    (args.remove(0), args)
 }
 
 fn handle_command(command: String, args: Vec<String>) -> Result<Option<ExitCode>> {
