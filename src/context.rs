@@ -1,12 +1,18 @@
 use crate::{args::parse_args, command::Command};
 use anyhow::{bail, Result};
-use std::{cell::RefCell, fmt::Display, fs::OpenOptions, io::Write};
+use std::{
+    cell::RefCell,
+    fmt::Display,
+    fs::{self, OpenOptions},
+    io::Write,
+    path::Path,
+};
 
 pub struct CommandContext {
     pub command: Command,
     pub command_str: String,
     pub args: Vec<String>,
-    pub r_stderr: Option<String>,
+    pub r_stderr: Option<(String, bool)>,
     pub r_stdout: bool,
     pub writer: RefCell<Box<dyn std::io::Write>>,
 }
@@ -35,8 +41,12 @@ impl TryFrom<&str> for CommandContext {
                 bail!("No file specified for redirection");
             };
             args.truncate(args.len() - 1);
-            if let Some(parent) = std::path::Path::new(&file).parent() {
-                std::fs::create_dir_all(parent)?;
+            let path = Path::new(&file);
+            if !path.exists() {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)?;
+                    fs::File::create(&file)?;
+                }
             }
             Some(file)
         } else {
@@ -47,12 +57,15 @@ impl TryFrom<&str> for CommandContext {
             command,
             command_str,
             args,
-            r_stderr: if r_stderr { file.clone() } else { None },
+            r_stderr: if r_stderr {
+                file.clone().map(|f| (f, append))
+            } else {
+                None
+            },
             r_stdout,
             writer: if r_stdout {
                 RefCell::new(Box::new(
                     OpenOptions::new()
-                        .create(true)
                         .write(true)
                         .append(append)
                         .truncate(!append)
@@ -79,11 +92,21 @@ impl CommandContext {
     }
 
     pub fn ewrite(&self, err: impl Display) {
-        if let Some(file) = &self.r_stderr {
+        if let Some((file, append)) = &self.r_stderr {
             if self.r_stdout {
                 let _ = write!(self.writer.borrow_mut(), "{}", err);
-            } else if let Ok(mut writer) = OpenOptions::new().create(true).append(true).open(file) {
-                let _ = write!(writer, "{}", err);
+            } else if let Some(parent) = std::path::Path::new(&file).parent() {
+                if fs::create_dir_all(parent).is_ok() {
+                    if let Ok(mut writer) = OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .append(*append)
+                        .truncate(!append)
+                        .open(file)
+                    {
+                        let _ = write!(writer, "{}", err);
+                    }
+                }
             }
         } else {
             eprint!("{}", err);
