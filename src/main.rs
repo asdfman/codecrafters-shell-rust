@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use codecrafters_shell::args::parse_args;
 use std::fmt::Display;
 use std::fs::metadata;
 use std::io::{self, Write};
@@ -35,11 +36,11 @@ fn take_input() -> Result<String> {
 }
 
 fn parse_input(input: &str) -> Result<(String, Vec<String>)> {
-    let mut parts = input.split_whitespace();
-    Ok((
-        parts.next().unwrap_or_default().to_string(),
-        parts.map(String::from).collect(),
-    ))
+    let (command, remainder) = match input.find(char::is_whitespace) {
+        Some(idx) => input.split_at(idx),
+        None => ("", ""),
+    };
+    Ok((command.to_string(), parse_args(remainder)))
 }
 
 fn handle_command(command: String, args: Vec<String>) -> Result<Option<ExitCode>> {
