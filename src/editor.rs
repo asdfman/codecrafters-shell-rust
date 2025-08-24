@@ -3,17 +3,21 @@ use std::{env, fs};
 
 use once_cell::unsync::OnceCell;
 use rustyline::{
-    completion::Completer, history::FileHistory, Editor, Helper, Highlighter, Hinter, Validator,
+    completion::{Completer, Pair},
+    config::Configurer,
+    history::FileHistory,
+    Editor, Helper, Highlighter, Hinter, Validator,
 };
 use trie_rs::Trie;
 
 use crate::command::is_executable;
 
 pub type ShellEditor = Editor<ShellCompleter, FileHistory>;
-const BUILTIN_COMMANDS: &[&str] = &["exit ", "echo ", "type ", "pwd ", "cd "];
+const BUILTIN_COMMANDS: &[&str] = &["exit", "echo", "type", "pwd", "cd"];
 
 pub fn get_editor() -> ShellEditor {
     let mut editor = Editor::new().unwrap();
+    editor.set_completion_type(rustyline::CompletionType::List);
     editor.set_helper(Some(ShellCompleter {
         trie: OnceCell::new(),
     }));
@@ -25,7 +29,7 @@ pub struct ShellCompleter {
     trie: OnceCell<Trie<u8>>,
 }
 impl Completer for ShellCompleter {
-    type Candidate = String;
+    type Candidate = Pair;
     fn complete(
         &self,
         line: &str,
@@ -38,13 +42,15 @@ impl Completer for ShellCompleter {
             .rev()
             .find_map(|(i, c)| c.is_whitespace().then_some(i + c.len_utf8()))
             .unwrap_or(0);
-        let prefix = &line[start_idx..pos];
-        let result: Vec<String> = trie.predictive_search(prefix).collect();
-        if result.iter().any(|s| s == prefix) {
-            Ok((start_idx, vec![]))
-        } else {
-            Ok((start_idx, result))
-        }
+        let results: Vec<String> = trie.predictive_search(&line[start_idx..pos]).collect();
+        let candidates: Vec<Pair> = results
+            .into_iter()
+            .map(|s| Pair {
+                display: s.clone(),
+                replacement: format!("{s} "),
+            })
+            .collect();
+        Ok((start_idx, candidates))
     }
 }
 
@@ -63,11 +69,7 @@ fn get_executables() -> Vec<String> {
         .filter_map(|path| fs::read_dir(path).ok())
         .flat_map(|dir| dir.filter_map(Result::ok))
         .filter_map(|entry| {
-            is_executable(&entry.path()).then(|| {
-                let mut file = entry.file_name().to_string_lossy().into_owned();
-                file.push(' ');
-                file
-            })
+            is_executable(&entry.path()).then(|| entry.file_name().to_string_lossy().into_owned())
         })
         .collect()
 }
