@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::process::{Command as ProcessCommand, ExitCode};
+use std::process::Command as ProcessCommand;
 use std::{
     env,
     fs::metadata,
@@ -37,7 +37,7 @@ impl From<&str> for Command {
     }
 }
 
-pub fn handle_command(ctx: &CommandContext) -> Result<Option<ExitCode>> {
+pub fn handle_command(ctx: &CommandContext) -> Result<()> {
     match ctx.command {
         Command::Echo => ctx.writeln(ctx.args.join(" ")),
         Command::Type => type_command(ctx.args.first().unwrap_or(&String::new()), ctx),
@@ -56,22 +56,23 @@ pub fn handle_command(ctx: &CommandContext) -> Result<Option<ExitCode>> {
             let code = ctx
                 .args
                 .first()
-                .and_then(|x| x.parse::<u8>().ok())
+                .and_then(|x| x.parse::<i32>().ok())
                 .unwrap_or(0);
-            return Ok(Some(ExitCode::from(code)));
+            std::process::exit(code)
         }
     }
-    Ok(None)
+    Ok(())
 }
 
 fn try_get_executable_path(command: &str) -> Option<PathBuf> {
     env::var("PATH").ok()?.split(':').find_map(|dir| {
         let path = Path::new(dir).join(command);
-        metadata(&path)
-            .ok()
-            .filter(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-            .map(|_| path)
+        is_executable(&path).then_some(path)
     })
+}
+
+pub fn is_executable(path: &Path) -> bool {
+    metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
 fn run_executable(executable: &str, ctx: &CommandContext) -> Result<(), std::io::Error> {
