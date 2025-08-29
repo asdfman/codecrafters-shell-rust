@@ -3,10 +3,9 @@ const DQ: char = '\"';
 const BS: char = '\\';
 
 pub fn parse_args(input: &str) -> Vec<String> {
-    let input = input.trim();
     let mut args = vec![];
     let (mut in_sq, mut in_dq) = (false, false);
-    let mut chars = input.chars().peekable();
+    let mut chars = input.trim().chars().peekable();
     let mut cur_arg = String::new();
     while let Some(c) = chars.next() {
         match (in_sq, in_dq) {

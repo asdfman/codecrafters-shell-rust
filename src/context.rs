@@ -1,5 +1,6 @@
 use crate::{args::parse_args, command::Command};
 use anyhow::{bail, Result};
+use os_pipe::{PipeReader, PipeWriter};
 use std::{
     cell::RefCell,
     fmt::Display,
@@ -8,13 +9,42 @@ use std::{
     path::Path,
 };
 
+#[derive(Debug)]
 pub struct CommandContext {
     pub command: Command,
     pub command_str: String,
     pub args: Vec<String>,
     pub r_stderr: Option<(String, bool)>,
     pub r_stdout: bool,
-    pub writer: RefCell<Box<dyn std::io::Write>>,
+    pub writer: RefCell<Writer>,
+    pub piped_stdin: Option<PipeReader>,
+}
+
+#[derive(Debug)]
+pub enum Writer {
+    Pipe(PipeWriter),
+    File(fs::File),
+    Stdout(std::io::Stdout),
+}
+impl Writer {
+    fn ref_mut(&mut self) -> &mut dyn Write {
+        match self {
+            Writer::Pipe(p) => p,
+            Writer::File(f) => f,
+            Writer::Stdout(s) => s,
+        }
+    }
+}
+
+pub fn parse_commands(input: &str) -> Result<Vec<CommandContext>> {
+    if input.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut contexts = Vec::new();
+    for command in input.split('|') {
+        contexts.push(CommandContext::try_from(command.trim())?);
+    }
+    Ok(contexts)
 }
 
 impl TryFrom<&str> for CommandContext {
@@ -23,6 +53,7 @@ impl TryFrom<&str> for CommandContext {
         let mut args = parse_args(input);
         let command_str = args.remove(0);
         let command = Command::from(command_str.as_str());
+
         let (r_stdout, r_stderr, append) = args
             .iter()
             .find_map(|arg| match arg.as_str() {
@@ -63,8 +94,9 @@ impl TryFrom<&str> for CommandContext {
                 None
             },
             r_stdout,
+            piped_stdin: None,
             writer: if r_stdout {
-                RefCell::new(Box::new(
+                RefCell::new(Writer::File(
                     OpenOptions::new()
                         .write(true)
                         .append(append)
@@ -72,44 +104,56 @@ impl TryFrom<&str> for CommandContext {
                         .open(file.unwrap())?,
                 ))
             } else {
-                RefCell::new(Box::new(std::io::stdout()))
+                RefCell::new(Writer::Stdout(std::io::stdout()))
             },
         })
     }
 }
 
 impl CommandContext {
-    pub fn writeln(&self, msg: impl Display) {
-        let _ = writeln!(self.writer.borrow_mut(), "{msg}");
+    pub fn writeln(&self, msg: impl Display) -> Result<()> {
+        let mut writer = self.writer.borrow_mut();
+        writeln!(writer.ref_mut(), "{}", msg)?;
+        writer.ref_mut().flush()?;
+        Ok(())
     }
 
-    pub fn write(&self, msg: impl Display) {
-        let _ = write!(self.writer.borrow_mut(), "{msg}");
+    pub fn write(&self, msg: impl Display) -> Result<()> {
+        let mut writer = self.writer.borrow_mut();
+        write!(writer.ref_mut(), "{}", msg)?;
+        writer.ref_mut().flush()?;
+        Ok(())
     }
 
-    pub fn ewriteln(&self, err: impl Display) {
-        self.ewrite(format!("{}\n", err));
+    pub fn ewriteln(&self, err: impl Display) -> Result<()> {
+        self.ewrite(format!("{}\n", err))
     }
 
-    pub fn ewrite(&self, err: impl Display) {
+    pub fn ewrite(&self, err: impl Display) -> Result<()> {
         if let Some((file, append)) = &self.r_stderr {
             if self.r_stdout {
-                let _ = write!(self.writer.borrow_mut(), "{}", err);
-            } else if let Some(parent) = std::path::Path::new(&file).parent() {
-                if fs::create_dir_all(parent).is_ok() {
-                    if let Ok(mut writer) = OpenOptions::new()
-                        .create(true)
-                        .write(true)
-                        .append(*append)
-                        .truncate(!append)
-                        .open(file)
-                    {
-                        let _ = write!(writer, "{}", err);
-                    }
-                }
+                let mut writer = self.writer.borrow_mut();
+                write!(writer.ref_mut(), "{}", err)?;
+                writer.ref_mut().flush()?;
+            } else if let Some(mut writer) = create_stderr_file_writer(file, *append) {
+                write!(writer, "{}", err)?;
+                writer.flush()?
             }
         } else {
             eprint!("{}", err);
         }
+        Ok(())
     }
+}
+
+pub fn create_stderr_file_writer(file: &str, append: bool) -> Option<fs::File> {
+    let parent = std::path::Path::new(&file).parent()?;
+    fs::create_dir_all(parent).ok()?;
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append)
+        .open(file)
+        .ok()
 }

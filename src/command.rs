@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use std::process::Command as ProcessCommand;
 use std::{
     env,
     fs::metadata,
@@ -9,6 +8,7 @@ use std::{
 
 use crate::context::CommandContext;
 
+#[derive(Clone, Debug)]
 pub enum Command {
     Exit,
     Echo,
@@ -37,21 +37,20 @@ impl From<&str> for Command {
     }
 }
 
-pub fn handle_command(ctx: &CommandContext) -> Result<()> {
-    match ctx.command {
-        Command::Echo => ctx.writeln(ctx.args.join(" ")),
-        Command::Type => type_command(ctx.args.first().unwrap_or(&String::new()), ctx),
-        Command::Pwd => ctx.writeln(env::current_dir()?.display()),
+pub fn handle_command(ctx: &mut CommandContext) -> Result<()> {
+    match &ctx.command.clone() {
+        Command::Echo => ctx.writeln(ctx.args.join(" "))?,
+        Command::Type => type_command(ctx.args.first().unwrap_or(&String::new()), ctx)?,
+        Command::Pwd => ctx.writeln(env::current_dir()?.display())?,
         Command::Cd => {
             if change_directory(ctx.args.as_slice()).is_err() {
                 ctx.writeln(format_args!(
                     "cd: {}: No such file or directory",
                     ctx.args.first().unwrap(),
-                ));
+                ))?;
             }
         }
-        Command::Executable { ref name, .. } => run_executable(name, ctx)?,
-        Command::Invalid => ctx.writeln(format_args!("{}: command not found", ctx.command_str)),
+        Command::Invalid => ctx.ewriteln(format_args!("{}: command not found", ctx.command_str))?,
         Command::Exit => {
             let code = ctx
                 .args
@@ -60,6 +59,7 @@ pub fn handle_command(ctx: &CommandContext) -> Result<()> {
                 .unwrap_or(0);
             std::process::exit(code)
         }
+        Command::Executable { .. } => {}
     }
     Ok(())
 }
@@ -75,14 +75,7 @@ pub fn is_executable(path: &Path) -> bool {
     metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
-fn run_executable(executable: &str, ctx: &CommandContext) -> Result<(), std::io::Error> {
-    let output = ProcessCommand::new(executable).args(&ctx.args).output()?;
-    ctx.write(String::from_utf8_lossy(&output.stdout));
-    ctx.ewrite(String::from_utf8_lossy(&output.stderr));
-    Ok(())
-}
-
-fn type_command(cmd: &str, ctx: &CommandContext) {
+fn type_command(cmd: &str, ctx: &CommandContext) -> Result<()> {
     match Command::from(cmd) {
         Command::Invalid => ctx.writeln(format_args!("{}: not found", cmd)),
         Command::Executable {
