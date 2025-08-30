@@ -1,8 +1,9 @@
-use std::{collections::VecDeque, path::Path, sync::Mutex};
-
 use once_cell::sync::Lazy;
+use std::fmt::write;
+use std::io::Write;
+use std::{collections::VecDeque, sync::Mutex};
 
-use crate::context::CommandContext;
+use crate::context::{create_file_writer, CommandContext};
 
 const MAX_HISTORY_RETAINED: usize = 100;
 
@@ -60,7 +61,8 @@ impl CommandHistory {
             HistoryArgs::None => print_history(ctx, None),
             HistoryArgs::Limit(n) => print_history(ctx, Some(n)),
             HistoryArgs::ReadFile(path) => read_history_file(path),
-            _ => {}
+            HistoryArgs::WriteFile(path) => write_history_file(path, false),
+            HistoryArgs::AppendFile(path) => write_history_file(path, true),
         }
     }
 
@@ -99,5 +101,15 @@ fn read_history_file(path: String) {
         for line in content.lines().map(String::from) {
             history.data.push_back(line);
         }
+    }
+}
+
+fn write_history_file(path: String, append: bool) {
+    let Some(mut file) = create_file_writer(&path, append) else {
+        return;
+    };
+    let history = COMMAND_HISTORY.lock().unwrap();
+    for entry in history.data.iter() {
+        let _ = writeln!(file, "{}", entry);
     }
 }

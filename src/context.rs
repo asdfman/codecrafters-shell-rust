@@ -135,7 +135,7 @@ impl CommandContext {
                 let mut writer = self.writer.borrow_mut();
                 write!(writer.ref_mut(), "{}", err)?;
                 writer.ref_mut().flush()?;
-            } else if let Some(mut writer) = create_stderr_file_writer(file, *append) {
+            } else if let Some(mut writer) = create_file_writer(file, *append) {
                 write!(writer, "{}", err)?;
                 writer.flush()?
             }
@@ -146,7 +146,7 @@ impl CommandContext {
     }
 }
 
-pub fn create_stderr_file_writer(file: &str, append: bool) -> Option<fs::File> {
+pub fn create_file_writer(file: &str, append: bool) -> Option<fs::File> {
     let parent = std::path::Path::new(&file).parent()?;
     fs::create_dir_all(parent).ok()?;
     OpenOptions::new()

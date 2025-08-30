@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
 use codecrafters_shell::command::{handle_command, Command};
-use codecrafters_shell::context::{
-    create_stderr_file_writer, parse_commands, CommandContext, Writer,
-};
+use codecrafters_shell::context::{create_file_writer, parse_commands, CommandContext, Writer};
 use codecrafters_shell::editor::get_editor;
 use codecrafters_shell::history::CommandHistory;
 use std::cell::RefCell;
@@ -90,7 +88,7 @@ fn run_executable(ctx: &mut CommandContext) -> Result<Child> {
     let stderr = ctx
         .r_stderr
         .clone()
-        .and_then(|(file, append)| create_stderr_file_writer(&file, append))
+        .and_then(|(file, append)| create_file_writer(&file, append))
         .map(Stdio::from)
         .unwrap_or(Stdio::inherit());
     let child = ProcessCommand::new(name)
