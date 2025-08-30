@@ -12,6 +12,7 @@ use std::thread::{self};
 fn main() -> Result<()> {
     let mut editor = get_editor();
     loop {
+        CommandHistory::reset_browse();
         let input = editor.readline("$ ")?;
         CommandHistory::add(&input);
         let commands = match parse_commands(&input) {

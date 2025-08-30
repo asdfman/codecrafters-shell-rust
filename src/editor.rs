@@ -6,11 +6,12 @@ use rustyline::{
     completion::{Completer, Pair},
     config::Configurer,
     history::FileHistory,
-    Editor, Helper, Highlighter, Hinter, Validator,
+    Cmd, ConditionalEventHandler, Editor, EventHandler, Helper, Highlighter, Hinter, KeyCode,
+    KeyEvent, Modifiers, Validator,
 };
 use trie_rs::Trie;
 
-use crate::command::is_executable;
+use crate::{command::is_executable, history::CommandHistory};
 
 pub type ShellEditor = Editor<ShellCompleter, FileHistory>;
 const BUILTIN_COMMANDS: &[&str] = &["exit", "echo", "type", "pwd", "cd"];
@@ -21,6 +22,15 @@ pub fn get_editor() -> ShellEditor {
     editor.set_helper(Some(ShellCompleter {
         trie: OnceCell::new(),
     }));
+    let handler = Box::new(BrowseHistoryHandler);
+    editor.bind_sequence(
+        KeyEvent(KeyCode::Up, Modifiers::NONE),
+        EventHandler::Conditional(handler.clone()),
+    );
+    editor.bind_sequence(
+        KeyEvent(KeyCode::Down, Modifiers::NONE),
+        EventHandler::Conditional(handler.clone()),
+    );
     editor
 }
 
@@ -51,6 +61,27 @@ impl Completer for ShellCompleter {
             })
             .collect();
         Ok((start_idx, candidates))
+    }
+}
+
+#[derive(Clone)]
+struct BrowseHistoryHandler;
+impl ConditionalEventHandler for BrowseHistoryHandler {
+    fn handle(
+        &self,
+        evt: &rustyline::Event,
+        _: rustyline::RepeatCount,
+        _: bool,
+        _: &rustyline::EventContext,
+    ) -> Option<rustyline::Cmd> {
+        let key = evt.get(0)?;
+        let is_down = match key {
+            KeyEvent(KeyCode::Up, Modifiers::NONE) => Some(false),
+            KeyEvent(KeyCode::Down, Modifiers::NONE) => Some(true),
+            _ => None,
+        }?;
+        let entry = CommandHistory::browse_next(is_down);
+        Some(Cmd::Replace(rustyline::Movement::WholeBuffer, entry))
     }
 }
 
