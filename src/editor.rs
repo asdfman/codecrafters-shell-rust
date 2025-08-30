@@ -81,7 +81,7 @@ impl ConditionalEventHandler for BrowseHistoryHandler {
             _ => None,
         }?;
         let entry = CommandHistory::browse_next(is_down);
-        Some(Cmd::Replace(rustyline::Movement::WholeBuffer, entry))
+        Some(Cmd::Replace(rustyline::Movement::WholeLine, entry))
     }
 }
 

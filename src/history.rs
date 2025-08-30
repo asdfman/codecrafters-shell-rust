@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Mutex};
+use std::{collections::VecDeque, path::Path, sync::Mutex};
 
 use once_cell::sync::Lazy;
 
@@ -10,7 +10,6 @@ const MAX_HISTORY_RETAINED: usize = 100;
 pub struct CommandHistory {
     data: VecDeque<String>,
     browse_idx: isize,
-    cur_prompt: Option<String>,
 }
 
 impl Default for CommandHistory {
@@ -18,7 +17,28 @@ impl Default for CommandHistory {
         Self {
             data: VecDeque::with_capacity(MAX_HISTORY_RETAINED),
             browse_idx: 0,
-            cur_prompt: None,
+        }
+    }
+}
+
+enum HistoryArgs {
+    None,
+    Limit(usize),
+    WriteFile(String),
+    AppendFile(String),
+    ReadFile(String),
+}
+impl From<&Vec<String>> for HistoryArgs {
+    fn from(value: &Vec<String>) -> Self {
+        match value.as_slice() {
+            [flag, path] if flag == "-r" => Self::ReadFile(path.to_string()),
+            [flag, path] if flag == "-w" => Self::WriteFile(path.to_string()),
+            [flag, path] if flag == "-a" => Self::AppendFile(path.to_string()),
+            [limit] => limit
+                .parse::<usize>()
+                .map(Self::Limit)
+                .unwrap_or(Self::None),
+            _ => Self::None,
         }
     }
 }
@@ -36,40 +56,27 @@ impl CommandHistory {
     }
 
     pub fn handle_command(ctx: &CommandContext) {
-        let history = COMMAND_HISTORY.lock().unwrap();
-        let skip_count = ctx
-            .args
-            .first()
-            .and_then(|n| n.parse::<usize>().ok())
-            .map(|n| history.data.len() - n)
-            .unwrap_or(0);
-        for (index, command) in history.data.iter().enumerate().skip(skip_count) {
-            let _ = ctx.writeln(format_args!("  {}  {}", index + 1, command));
-        }
-    }
-
-    pub fn store_cur_prompt(prompt: &str) {
-        let mut history = COMMAND_HISTORY.lock().unwrap();
-        if history.cur_prompt.is_none() {
-            history.cur_prompt = Some(prompt.to_string());
+        match HistoryArgs::from(&ctx.args) {
+            HistoryArgs::None => print_history(ctx, None),
+            HistoryArgs::Limit(n) => print_history(ctx, Some(n)),
+            HistoryArgs::ReadFile(path) => read_history_file(path),
+            _ => {}
         }
     }
 
     pub fn reset_browse() {
         let mut history = COMMAND_HISTORY.lock().unwrap();
-        history.cur_prompt = None;
         history.browse_idx = 0;
     }
 
     pub fn browse_next(is_down: bool) -> Option<String> {
         let mut history = COMMAND_HISTORY.lock().unwrap();
         let len = history.data.len();
-        if len == 0 {
+        if len == 0 || (history.browse_idx == 0 && is_down) {
             return None;
         }
         let mut idx = history.browse_idx + if is_down { -1 } else { 1 };
         idx = idx.clamp(0, len as isize);
-        //println!("idx {idx}, len {len}");
         if idx == 0 {
             return Some("".to_string());
         }
@@ -78,3 +85,19 @@ impl CommandHistory {
     }
 }
 
+fn print_history(ctx: &CommandContext, limit: Option<usize>) {
+    let history = COMMAND_HISTORY.lock().unwrap();
+    let skip_count = limit.map(|n| history.data.len() - n).unwrap_or(0);
+    for (index, command) in history.data.iter().enumerate().skip(skip_count) {
+        let _ = ctx.writeln(format_args!("  {}  {}", index + 1, command));
+    }
+}
+
+fn read_history_file(path: String) {
+    if let Ok(content) = std::fs::read_to_string(path) {
+        let mut history = COMMAND_HISTORY.lock().unwrap();
+        for line in content.lines().map(String::from) {
+            history.data.push_back(line);
+        }
+    }
+}
