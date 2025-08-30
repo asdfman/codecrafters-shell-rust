@@ -1,5 +1,5 @@
+use anyhow::Result;
 use once_cell::sync::Lazy;
-use std::fmt::write;
 use std::io::Write;
 use std::{collections::VecDeque, sync::Mutex};
 
@@ -16,10 +16,16 @@ pub struct CommandHistory {
 impl Default for CommandHistory {
     fn default() -> Self {
         Self {
-            data: VecDeque::with_capacity(MAX_HISTORY_RETAINED),
+            data: init_from_file().unwrap_or(VecDeque::with_capacity(MAX_HISTORY_RETAINED)),
             browse_idx: 0,
         }
     }
+}
+
+fn init_from_file() -> Result<VecDeque<String>> {
+    let read_path = std::env::var("HISTFILE")?;
+    let content = std::fs::read_to_string(read_path)?;
+    Ok(content.lines().map(String::from).collect())
 }
 
 enum HistoryArgs {
@@ -113,3 +119,4 @@ fn write_history_file(path: String, append: bool) {
         let _ = writeln!(file, "{}", entry);
     }
 }
+
