@@ -120,3 +120,8 @@ fn write_history_file(path: String, append: bool) {
     }
 }
 
+pub fn write_history_on_exit() {
+    if let Ok(path) = std::env::var("HISTFILE") {
+        write_history_file(path, true);
+    }
+}

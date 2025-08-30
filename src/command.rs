@@ -6,7 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{context::CommandContext, history::CommandHistory};
+use crate::{
+    context::CommandContext,
+    history::{write_history_on_exit, CommandHistory},
+};
 
 #[derive(Clone, Debug)]
 pub enum Command {
@@ -59,6 +62,7 @@ pub fn handle_command(ctx: &mut CommandContext) -> Result<()> {
                 .first()
                 .and_then(|x| x.parse::<i32>().ok())
                 .unwrap_or(0);
+            write_history_on_exit();
             std::process::exit(code)
         }
         Command::History => CommandHistory::handle_command(ctx),
