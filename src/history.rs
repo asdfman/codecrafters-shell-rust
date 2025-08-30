@@ -11,6 +11,7 @@ const MAX_HISTORY_RETAINED: usize = 100;
 pub struct CommandHistory {
     data: VecDeque<String>,
     browse_idx: isize,
+    last_append_idx: Option<usize>,
 }
 
 impl Default for CommandHistory {
@@ -18,6 +19,7 @@ impl Default for CommandHistory {
         Self {
             data: init_from_file().unwrap_or(VecDeque::with_capacity(MAX_HISTORY_RETAINED)),
             browse_idx: 0,
+            last_append_idx: None,
         }
     }
 }
@@ -114,8 +116,13 @@ fn write_history_file(path: String, append: bool) {
     let Some(mut file) = create_file_writer(&path, append) else {
         return;
     };
-    let history = COMMAND_HISTORY.lock().unwrap();
-    for entry in history.data.iter() {
+    let mut history = COMMAND_HISTORY.lock().unwrap();
+    let mut skip_count = 0;
+    if append {
+        skip_count = history.last_append_idx.map(|n| n + 1).unwrap_or(0);
+        history.last_append_idx = Some(history.data.len() - 1);
+    }
+    for entry in history.data.iter().skip(skip_count) {
         let _ = writeln!(file, "{}", entry);
     }
 }
