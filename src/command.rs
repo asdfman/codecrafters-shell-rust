@@ -16,6 +16,7 @@ pub enum Command {
     Executable { name: String, full_path: PathBuf },
     Pwd,
     Cd,
+    History,
     Invalid,
 }
 
@@ -27,6 +28,7 @@ impl From<&str> for Command {
             "type" => Command::Type,
             "pwd" => Command::Pwd,
             "cd" => Command::Cd,
+            "history" => Command::History,
             _ => try_get_executable_path(command)
                 .map(|path| Command::Executable {
                     name: command.to_string(),
@@ -59,6 +61,7 @@ pub fn handle_command(ctx: &mut CommandContext) -> Result<()> {
                 .unwrap_or(0);
             std::process::exit(code)
         }
+        Command::History => {}
         Command::Executable { .. } => {}
     }
     Ok(())
