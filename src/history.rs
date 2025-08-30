@@ -6,6 +6,7 @@ use std::{collections::VecDeque, sync::Mutex};
 use crate::context::{create_file_writer, CommandContext};
 
 const MAX_HISTORY_RETAINED: usize = 100;
+const HISTFILE: &str = "HISTFILE";
 
 #[derive(Debug)]
 pub struct CommandHistory {
@@ -16,16 +17,22 @@ pub struct CommandHistory {
 
 impl Default for CommandHistory {
     fn default() -> Self {
+        let data = init_from_file().unwrap_or(VecDeque::with_capacity(MAX_HISTORY_RETAINED));
+        let last_append_idx = if !data.is_empty() {
+            Some(data.len() - 1)
+        } else {
+            None
+        };
         Self {
-            data: init_from_file().unwrap_or(VecDeque::with_capacity(MAX_HISTORY_RETAINED)),
+            data,
             browse_idx: 0,
-            last_append_idx: None,
+            last_append_idx,
         }
     }
 }
 
 fn init_from_file() -> Result<VecDeque<String>> {
-    let read_path = std::env::var("HISTFILE")?;
+    let read_path = std::env::var(HISTFILE)?;
     let content = std::fs::read_to_string(read_path)?;
     Ok(content.lines().map(String::from).collect())
 }
@@ -128,7 +135,8 @@ fn write_history_file(path: String, append: bool) {
 }
 
 pub fn write_history_on_exit() {
-    if let Ok(path) = std::env::var("HISTFILE") {
+    if let Ok(path) = std::env::var(HISTFILE) {
         write_history_file(path, true);
     }
 }
+
