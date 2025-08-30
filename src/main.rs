@@ -4,6 +4,7 @@ use codecrafters_shell::context::{
     create_stderr_file_writer, parse_commands, CommandContext, Writer,
 };
 use codecrafters_shell::editor::get_editor;
+use codecrafters_shell::history::CommandHistory;
 use std::cell::RefCell;
 use std::process::{Child, Command as ProcessCommand, Stdio};
 use std::thread::{self};
@@ -12,6 +13,7 @@ fn main() -> Result<()> {
     let mut editor = get_editor();
     loop {
         let input = editor.readline("$ ")?;
+        CommandHistory::add(&input);
         let commands = match parse_commands(&input) {
             Ok(ctx) => ctx,
             Err(e) => {
@@ -37,20 +39,19 @@ fn execute_commands(contexts: Vec<CommandContext>) -> Result<()> {
             ctx.writer = RefCell::new(Writer::Pipe(writer));
             prev_reader = Some(reader);
         }
-        if let Command::Executable { .. } = ctx.command {
-            match run_executable(&mut ctx) {
+        match &ctx.command {
+            Command::Executable { .. } => match run_executable(&mut ctx) {
                 Ok(child) => children.push(child),
                 Err(e) => ctx.ewriteln(e)?,
+            },
+            _ if last_idx == 0 => {
+                run_builtin(&mut ctx);
+                return Ok(());
             }
-        } else {
-            let handle = thread::spawn({
-                move || {
-                    if let Err(e) = handle_command(&mut ctx) {
-                        let _ = ctx.ewriteln(e);
-                    }
-                }
-            });
-            handles.push(handle);
+            _ => {
+                let handle = thread::spawn(move || run_builtin(&mut ctx));
+                handles.push(handle);
+            }
         }
     }
 
@@ -62,6 +63,12 @@ fn execute_commands(contexts: Vec<CommandContext>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_builtin(ctx: &mut CommandContext) {
+    if let Err(e) = handle_command(ctx) {
+        let _ = ctx.ewriteln(e);
+    }
 }
 
 fn run_executable(ctx: &mut CommandContext) -> Result<Child> {
